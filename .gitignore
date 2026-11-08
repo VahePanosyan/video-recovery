@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+*.rs.bk
+
+# Windows build artifacts
+*.exe
+*.dll
+*.pdb
+*.lib
+*.exp
+*.ilk
+
+# Logs and local environment files
+*.log
+.env
+.env.*
+!.env.example
+
+# IDE and editor settings
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

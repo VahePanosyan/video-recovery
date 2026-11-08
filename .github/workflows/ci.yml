@@ -1,0 +1,87 @@
+name: CI & Release Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check-and-test:
+    name: Lint, Test, Audit & Package (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Install CI Cargo tools (cargo-llvm-cov, cargo-audit, cargo-deny)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-audit,cargo-deny
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Code Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy Linter
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Test Suite
+        run: cargo test
+
+      - name: Run Code Coverage (>= 80% line coverage)
+        run: cargo llvm-cov --fail-under-lines 80
+
+      - name: Run Security Audit
+        run: cargo audit
+
+      - name: Run Dependency License and Ban Check
+        run: cargo deny check
+
+      - name: Build Release Binary
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Stage Release Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging -Force | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/sd-video-recovery.exe staging/
+          Copy-Item README.md staging/
+          Copy-Item README.hy.md staging/
+          Copy-Item LICENSE staging/
+          Copy-Item THIRD_PARTY_NOTICES.md staging/
+          
+          # Generate SHA256SUMS.txt for all staged files
+          Push-Location staging
+          Get-ChildItem -File | Get-FileHash -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)"
+          } | Set-Content -Encoding utf8 SHA256SUMS.txt
+          Pop-Location
+          
+          # Compress to zip archive (excluding any external binaries like ffmpeg)
+          Compress-Archive -Path staging/* -DestinationPath sd-video-recovery-x86_64-pc-windows-msvc.zip -Force
+
+      - name: Upload Release Archive Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sd-video-recovery-x86_64-pc-windows-msvc
+          path: sd-video-recovery-x86_64-pc-windows-msvc.zip
+          if-no-files-found: error
